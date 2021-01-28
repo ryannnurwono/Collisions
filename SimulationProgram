@@ -1,0 +1,175 @@
+import pymunk
+from pymunk.pygame_util import *
+from pymunk.vec2d import Vec2d
+
+import pygame
+from pygame.locals import *
+
+space = pymunk.Space()
+b0 = space.static_body
+size = w, h = 1200, 800
+
+GRAY = (220, 220, 220)
+RED = (255, 0, 0)
+BLUE = (0, 0, 255)
+GREEN = (0, 100, 0)
+
+class Segment:
+    def __init__(self, p0, v, radius=10):
+        self.body = pymunk.Body()
+        self.body.position = p0
+        shape = pymunk.Segment(self.body, (0, 0), v, radius)
+        shape.density = 0.1
+        shape.elasticity = 0.5
+        shape.filter = pymunk.ShapeFilter(group=1)
+        shape.color = (0, 255, 0, 0)
+        space.add(self.body, shape)
+
+
+class Circle:
+    def __init__(self, pos, radius=20):
+        self.body = pymunk.Body()
+        self.body.position = pos
+        shape = pymunk.Circle(self.body, radius)
+        shape.density = 0.01
+        shape.friction = 1.0
+        shape.elasticity = 1
+        space.add(self.body, shape)
+        circles.append(shape)
+
+class Box:
+    def __init__(self, p0=(0, 0), p1=(w, h), d=4):
+        x0, y0 = p0
+        x1, y1 = p1
+        ps = [(x0, y0), (x1, y0), (x1, y1), (x0, y1)]
+        for i in range(4):
+            segment = pymunk.Segment(b0, ps[i], ps[(i+1) % 4], d)
+            segment.elasticity = 1
+            segment.friction = 1.0
+            space.add(segment)
+
+class App:
+    def __init__(self):
+        pygame.init()
+        self.screen = pygame.display.set_mode(size)
+        self.draw_options = DrawOptions(self.screen)
+        self.active_shape = None
+        self.selected_shapes = []
+        self.pulling = False
+        self.running = True
+        self.gravity = False
+        self.velocity_on=False
+
+    def run(self):
+        while self.running:
+            for event in pygame.event.get():
+                self.do_event(event)
+            self.draw()
+            space.step(0.01)
+
+        pygame.quit()
+
+    def do_event(self, event):
+        if event.type == QUIT:
+            self.running = False
+
+        elif event.type == KEYDOWN:
+            if event.key in (K_q, K_ESCAPE):
+                self.running = False
+
+            elif event.key == K_1:
+                p = from_pygame(pygame.mouse.get_pos(), self.screen)
+                Circle(p, radius=15)
+            elif event.key == K_2:
+                p = from_pygame(pygame.mouse.get_pos(), self.screen)
+                Circle(p, radius=30)
+            elif event.key == K_3:
+                p = from_pygame(pygame.mouse.get_pos(), self.screen)
+                Circle(p, radius=50)
+            elif event.key == K_4:
+                p = from_pygame(pygame.mouse.get_pos(), self.screen)
+                Circle(p, radius=75)
+            elif event.key == K_5:
+                p = from_pygame(pygame.mouse.get_pos(), self.screen)
+                Circle(p, radius=100)
+            
+            elif event.key == K_BACKSPACE:
+                s = self.active_shape
+                if s != None:
+                    space.remove(s, s.body)
+                    circles.remove(s)
+                    self.active_shape = None
+
+            elif event.key == K_g:
+                self.gravity = not self.gravity
+                if self.gravity:
+                    space.gravity = 0, 900
+                else:
+                    space.gravity = 0, 0
+
+            elif event.key == K_s:
+                for circle in circles:
+                    pymunk.Body.update_velocity(circle.body,(0,0), 0.001, 20.0)
+
+            elif event.key == K_v:
+                self.velocity_on=not self.velocity_on
+
+
+        elif event.type == MOUSEBUTTONDOWN:
+            p = from_pygame(event.pos, self.screen)
+            self.active_shape = None
+            for s in space.shapes:
+                info, info1, dist, info2= s.point_query(p)
+                if dist < 0.0:
+                    self.active_shape = s
+                    self.pulling = True
+
+                    s.body.angle = (p - s.body.position).angle
+
+        elif event.type == MOUSEMOTION:
+            self.p = event.pos
+
+        elif event.type == MOUSEBUTTONUP:
+            if self.pulling:
+                self.pulling = False
+                b = self.active_shape.body
+                p0 = b.position
+                p1 = from_pygame(event.pos, self.screen)
+                impulse = 300 * (p0 - p1).rotated(-b.angle)
+                b.apply_impulse_at_local_point(impulse)
+
+    def draw(self):
+        self.screen.fill(GRAY)
+        space.debug_draw(self.draw_options)
+
+        if self.active_shape != None:
+            active = self.active_shape
+            radius = int(active.radius)
+            pos = to_pygame(active.body.position, self.screen)
+            pygame.draw.circle(self.screen, RED, pos, radius, 3)
+            if self.pulling:
+                pygame.draw.line(self.screen, RED, pos, self.p, 3)
+                pygame.draw.circle(self.screen, RED, self.p, radius, 3)
+        if self.velocity_on:
+            for circle in circles:
+                p=circle.body.position
+                new_p=p+.5*(circle.body.velocity)
+                pygame.draw.line(self.screen, GREEN, p, new_p, int(((circle.radius)**2)/120))
+                    
+        for s in self.selected_shapes:
+            self.draw_bb(s)
+        pygame.display.update()
+
+    def draw_bb(self, shape):
+        pos = shape.bb.left, shape.bb.top
+        w = shape.bb.right - shape.bb.left
+        h = shape.bb.top - shape.bb.bottom
+        p = to_pygame(pos, self.screen)
+        pygame.draw.rect(self.screen, BLUE, (*p, w, h), 1)
+
+
+if __name__ == '__main__':
+    circles=[]
+    Box()
+    space.gravity = 0, 0
+    App().run()
